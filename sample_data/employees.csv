@@ -1,0 +1,6 @@
+emp_id,employee_name,department,role,salary
+E101,Rahul Verma,Engineering,Backend Engineer,95000
+E102,Sneha Reddy,Engineering,Frontend Engineer,90000
+E103,Amit Shah,Operations,Manager,110000
+E104,Kavita Roy,HR,Recruiter,70000
+E105,Manish Gupta,Engineering,DevOps Lead,105000

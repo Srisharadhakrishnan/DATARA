@@ -1,0 +1,8 @@
+customer_id,name,group,status,spending
+C001,Ravi Kumar,Billing,Active,1500
+C002,Arun Patel,Support,Active,800
+C003,Priya Sharma,Billing,Inactive,2100
+C004,Suresh Raina,Sales,Active,3200
+C005,Ananya Sen,Billing,Active,1900
+C006,Vikram Singh,Support,Inactive,450
+C007,Deepa Nair,Sales,Active,4100
