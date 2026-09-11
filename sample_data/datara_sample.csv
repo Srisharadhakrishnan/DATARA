@@ -1,0 +1,8 @@
+customer_id,customer_name,group,order_id,order_amount,city,status
+C101,Ravi Kumar,Billing,ORD-501,1500,Chennai,Active
+C102,Arun Patel,Support,ORD-502,800,Mumbai,Active
+C103,Priya Sharma,Billing,ORD-503,2100,Delhi,Inactive
+C104,Suresh Raina,Sales,ORD-504,3200,Chennai,Open
+C105,Ananya Sen,Billing,ORD-505,1900,Kolkata,Active
+C106,Vikram Singh,Support,ORD-506,450,Chennai,Open
+C107,Deepa Nair,Sales,ORD-507,4100,Bengaluru,Active

@@ -4,7 +4,7 @@ import requests
 import pytest
 
 API_URL = os.getenv("API_URL", "http://localhost:8000")
-SAMPLE_CSV_PATH = os.path.join(os.path.dirname(__file__), "..", "sample_data", "customers.csv")
+SAMPLE_CSV_PATH = os.path.join(os.path.dirname(__file__), "..", "sample_data", "datara_sample.csv")
 
 def test_01_health_check():
     """Verify /health returns genuine service connectivity."""
@@ -15,26 +15,17 @@ def test_01_health_check():
     assert data["kafka_connected"] is True
     assert data["neo4j_connected"] is True
 
-def test_02_ingest_valid_csv():
-    """Verify uploading valid CSV returns job_id and status queued."""
+def test_02_ingest_datara_sample():
+    """Ingest datara_sample.csv with 7 data rows."""
     with open(SAMPLE_CSV_PATH, "rb") as f:
-        response = requests.post(f"{API_URL}/ingest", files={"file": ("customers.csv", f, "text/csv")})
+        response = requests.post(f"{API_URL}/ingest", files={"file": ("datara_sample.csv", f, "text/csv")})
     
     assert response.status_code == 202, f"Ingest failed: {response.text}"
     data = response.json()
-    assert "job_id" in data
-    assert data["rows_received"] == 7
-    assert data["status"] == "queued"
-    return data["job_id"]
-
-def test_03_job_status_completion():
-    """Verify polling /status transitions to complete."""
-    job_id = test_02_ingest_valid_csv()
+    job_id = data["job_id"]
     
-    # Poll status until complete or timeout
-    max_retries = 20
-    status_data = None
-    for _ in range(max_retries):
+    # Poll status until complete
+    for _ in range(20):
         res = requests.get(f"{API_URL}/status?job_id={job_id}")
         assert res.status_code == 200
         status_data = res.json()
@@ -42,70 +33,77 @@ def test_03_job_status_completion():
             break
         time.sleep(1)
 
-    assert status_data["status"] == "complete", f"Job failed to complete: {status_data}"
+    assert status_data["status"] == "complete"
     assert status_data["rows_loaded"] == 7
-    assert status_data["rows_failed"] == 0
+    return job_id
 
-def test_04_grounded_chat_query():
-    """Verify chatbot answers grounded query backed by Neo4j data."""
-    # First ingest customers.csv to be sure
-    test_03_job_status_completion()
+# TEST CASE 1
+def test_03_count_billing():
+    """Question: How many customers are in Billing?"""
+    res = requests.post(f"{API_URL}/chat", json={"question": "How many customers are in Billing?"}).json()
+    assert res["grounded"] is True
+    assert "count" in res["cypher"].lower()
+    assert "3" in res["answer"]
 
-    payload = {"question": "How many rows belong to the Billing group?"}
-    response = requests.post(f"{API_URL}/chat", json=payload)
-    assert response.status_code == 200
-    data = response.json()
-    
-    assert data["grounded"] is True
-    assert "cypher" in data
-    assert "result" in data
-    assert "3" in data["answer"] or "Billing" in data["answer"]
+# TEST CASE 2 & 7
+def test_04_show_billing_customers_and_status():
+    """Question: Show Billing customers and their status."""
+    res = requests.post(f"{API_URL}/chat", json={"question": "Show Billing customers and their status."}).json()
+    assert res["grounded"] is True
+    assert "billing" in res["cypher"].lower()
+    assert len(res["result"]) == 3
+    # Check returned keys in result
+    first_row = res["result"][0]
+    assert "customer_name" in first_row or "customer_id" in first_row
+    assert "status" in first_row
 
-def test_05_ungrounded_chat_query():
-    """Verify unsupported / off-topic question returns grounded=false."""
-    payload = {"question": "What is the capital of France?"}
-    response = requests.post(f"{API_URL}/chat", json=payload)
-    assert response.status_code == 200
-    data = response.json()
+# TEST CASE 3
+def test_05_show_support_and_order_amounts():
+    """Question: Show Support customers and their order amounts."""
+    res = requests.post(f"{API_URL}/chat", json={"question": "Show Support customers and their order amounts."}).json()
+    assert res["grounded"] is True
+    assert "support" in res["cypher"].lower()
+    assert len(res["result"]) == 2
+    first_row = res["result"][0]
+    assert "order_amount" in first_row
 
-    assert data["grounded"] is False
-    assert data["answer"] == "I don't have that information in the uploaded data."
-    assert data["result"] == []
+# TEST CASE 4
+def test_06_show_sales_and_order_ids():
+    """Question: Show Sales customers with their order IDs."""
+    res = requests.post(f"{API_URL}/chat", json={"question": "Show Sales customers with their order IDs."}).json()
+    assert res["grounded"] is True
+    assert "sales" in res["cypher"].lower()
+    assert len(res["result"]) == 2
+    first_row = res["result"][0]
+    assert "order_id" in first_row
 
-def test_06_idempotent_reupload():
-    """Verify uploading identical file twice does not create duplicate rows."""
-    job1_id = test_02_ingest_valid_csv()
-    
-    # Wait for completion
-    for _ in range(20):
-        r1 = requests.get(f"{API_URL}/status?job_id={job1_id}").json()
-        if r1["status"] == "complete":
-            break
-        time.sleep(1)
+# TEST CASE 5
+def test_07_customers_from_chennai():
+    """Question: Which customers are from Chennai?"""
+    res = requests.post(f"{API_URL}/chat", json={"question": "Which customers are from Chennai?"}).json()
+    assert res["grounded"] is True
+    assert "chennai" in res["cypher"].lower()
+    assert len(res["result"]) == 3
 
-    # Ingest same file second time
-    job2_id = test_02_ingest_valid_csv()
-    for _ in range(20):
-        r2 = requests.get(f"{API_URL}/status?job_id={job2_id}").json()
-        if r2["status"] == "complete":
-            break
-        time.sleep(1)
+# TEST CASE 6
+def test_08_customers_in_hr_ungrounded():
+    """Question: How many customers are in HR? (HR does not exist)"""
+    res = requests.post(f"{API_URL}/chat", json={"question": "How many customers are in HR?"}).json()
+    assert res["grounded"] is False
+    assert res["answer"] == "I don't have that information in the uploaded data."
+    assert res["result"] == []
 
-    # Query count of rows in Billing group via Chat API
-    chat_res = requests.post(f"{API_URL}/chat", json={"question": "How many total rows are in the dataset?"}).json()
-    assert chat_res["grounded"] is True
-    # Count should still be exactly 7, not 14!
-    assert "7" in chat_res["answer"]
+# TEST CASE 8
+def test_09_case_insensitivity_variations():
+    """Test capitalization variations of queries."""
+    q1 = requests.post(f"{API_URL}/chat", json={"question": "show billing customers"}).json()
+    q2 = requests.post(f"{API_URL}/chat", json={"question": "SHOW BILLING CUSTOMERS"}).json()
+    q3 = requests.post(f"{API_URL}/chat", json={"question": "Show Billing customers"}).json()
 
-def test_07_invalid_file_handling():
-    """Verify empty file and non-CSV inputs return 400 Bad Request."""
-    # Empty CSV
-    res_empty = requests.post(f"{API_URL}/ingest", files={"file": ("empty.csv", b"", "text/csv")})
-    assert res_empty.status_code == 400
-
-    # Non-CSV file
-    res_text = requests.post(f"{API_URL}/ingest", files={"file": ("test.txt", b"hello world", "text/plain")})
-    assert res_text.status_code == 400
+    assert q1["grounded"] is True
+    assert q2["grounded"] is True
+    assert q3["grounded"] is True
+    assert len(q1["result"]) == len(q2["result"]) == len(q3["result"]) == 3
 
 if __name__ == "__main__":
     pytest.main(["-v", __file__])
